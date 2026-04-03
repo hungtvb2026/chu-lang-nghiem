@@ -9,7 +9,6 @@ type Props = {
 };
 
 export default function FullTextView({ verses, sections, selectedDe }: Props) {
-  // Group current verses by đệ
   const groups =
     selectedDe !== 0
       ? [{ de: selectedDe, label: DE_LABELS[selectedDe], verses }]
@@ -20,23 +19,38 @@ export default function FullTextView({ verses, sections, selectedDe }: Props) {
         }));
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-10">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-10 animate-fade-in-up">
       {groups.map(({ de, label, verses: groupVerses }) => (
         <section key={de}>
           {/* Section header */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-px flex-1 bg-gradient-to-r from-amber-800/60 to-transparent" />
-            <h2 className="text-amber-500 font-serif font-semibold text-lg px-2">{label}</h2>
-            <div className="h-px flex-1 bg-gradient-to-l from-amber-800/60 to-transparent" />
+          <div className="lotus-divider mb-5">
+            <h2
+              className="font-serif font-semibold text-lg px-3"
+              style={{ color: 'var(--accent)' }}
+            >
+              {label}
+            </h2>
           </div>
 
-          <div className="bg-stone-900/50 rounded-2xl border border-stone-800 px-5 py-4">
+          <div className="glass-card rounded-2xl px-5 py-4">
             {groupVerses.map((verse) => (
-              <div key={verse.id} className="flex flex-wrap gap-x-1.5 gap-y-0 py-1 group">
-                <span className="text-stone-600 text-xs tabular-nums select-none mt-1 shrink-0 w-8 text-right">
+              <div
+                key={verse.id}
+                className="group flex gap-x-2 py-1.5 px-2 -mx-2 rounded-lg
+                           transition-colors duration-200 hover:bg-white/[0.02]
+                           cursor-default"
+              >
+                <span
+                  className="text-xs tabular-nums select-none mt-1 shrink-0 w-8 text-right
+                             transition-colors duration-200 group-hover:text-amber-600/60"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   {verse.id}.
                 </span>
-                <p className="text-stone-200 font-serif text-base leading-relaxed flex-1">
+                <p
+                  className="font-serif text-base leading-relaxed flex-1"
+                  style={{ color: 'var(--text-primary)' }}
+                >
                   {verse.text}
                 </p>
               </div>

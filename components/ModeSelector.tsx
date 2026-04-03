@@ -2,11 +2,18 @@
 
 export type PracticeMode = "fill" | "progressive" | "flash" | "shuffle";
 
-const MODES: { value: PracticeMode; label: string; emoji: string; desc: string }[] = [
-  { value: "fill",        emoji: "✏️",  label: "Điền từ",    desc: "Fill-in-blank theo thứ tự" },
-  { value: "progressive", emoji: "📈", label: "Tiến độ",    desc: "Tự động tăng độ khó sau mỗi lần hoàn thành" },
-  { value: "flash",       emoji: "⚡",  label: "Flash",      desc: "Nhìn rồi ghi lại từ trí nhớ" },
-  { value: "shuffle",     emoji: "🔀",  label: "Ngẫu nhiên", desc: "Thứ tự ngẫu nhiên, luyện lại câu sai" },
+import { PenLine, TrendingUp, Zap, Shuffle } from "lucide-react";
+
+const MODES: {
+  value: PracticeMode;
+  label: string;
+  icon: typeof PenLine;
+  desc: string;
+}[] = [
+  { value: "fill",        icon: PenLine,     label: "Điền từ",    desc: "Điền từ còn thiếu theo thứ tự" },
+  { value: "progressive", icon: TrendingUp,  label: "Tiến độ",    desc: "Tự động tăng độ khó" },
+  { value: "flash",       icon: Zap,         label: "Flash",      desc: "Nhìn rồi ghi lại từ trí nhớ" },
+  { value: "shuffle",     icon: Shuffle,     label: "Ngẫu nhiên", desc: "Thứ tự ngẫu nhiên" },
 ];
 
 type Props = {
@@ -16,23 +23,35 @@ type Props = {
 
 export default function ModeSelector({ value, onChange }: Props) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {MODES.map((m) => (
-        <button
-          key={m.value}
-          onClick={() => onChange(m.value)}
-          title={m.desc}
-          className={`
-            px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border
-            ${value === m.value
-              ? "bg-stone-700 border-amber-500/70 text-amber-300"
-              : "bg-stone-800/40 border-stone-700/40 text-stone-400 hover:text-stone-200 hover:border-stone-600"
-            }
-          `}
-        >
-          <span className="mr-1">{m.emoji}</span>{m.label}
-        </button>
-      ))}
+    <div className="flex gap-1 sm:gap-1.5 min-w-0">
+      {MODES.map((m) => {
+        const active = value === m.value;
+        const Icon = m.icon;
+        return (
+          <button
+            key={m.value}
+            onClick={() => onChange(m.value)}
+            title={m.desc}
+            className={`
+              flex items-center gap-1.5 px-3 py-2 rounded-lg
+              text-[13px] font-semibold transition-all duration-200 whitespace-nowrap
+              active:scale-95 shrink-0
+            `}
+            style={active ? {
+              background: 'var(--accent-ghost)',
+              border: '1px solid var(--border-active)',
+              color: 'var(--accent)',
+            } : {
+              background: 'transparent',
+              border: '1px solid transparent',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <Icon size={15} strokeWidth={2} />
+            <span className="hidden min-[480px]:inline">{m.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

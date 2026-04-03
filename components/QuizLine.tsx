@@ -2,16 +2,18 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { QuizVerse } from "@/lib/quiz";
+import { Lightbulb, HelpCircle } from "lucide-react";
 
 type Props = {
   qv: QuizVerse;
   onCorrect: (blank: number) => void;
   onReveal: () => void;
+  onWrong?: () => void;
 };
 
 type BlankState = "idle" | "correct" | "wrong";
 
-export default function QuizLine({ qv, onCorrect, onReveal }: Props) {
+export default function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
   const { verse, words, hiddenIndices } = qv;
 
   const [inputs, setInputs] = useState<Record<number, string>>({});
@@ -36,22 +38,19 @@ export default function QuizLine({ qv, onCorrect, onReveal }: Props) {
       const val = (inputs[idx] || "").trim().toLowerCase();
       const expected = words[idx].replace(/[;,.]$/g, "").trim().toLowerCase();
       if (!val) return;
-
       if (val === expected) {
         setStates((prev) => ({ ...prev, [idx]: "correct" }));
-        onCorrect(idx); // QuizClient handles global focus
+        onCorrect(idx);
       } else {
         setStates((prev) => ({ ...prev, [idx]: "wrong" }));
+        onWrong?.();
       }
     },
-    [inputs, words, onCorrect]
+    [inputs, words, onCorrect, onWrong]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleCheck(idx);
-    }
+    if (e.key === "Enter") { e.preventDefault(); handleCheck(idx); }
   };
 
   const handleHint = (idx: number) => {
@@ -59,15 +58,35 @@ export default function QuizLine({ qv, onCorrect, onReveal }: Props) {
     onReveal();
   };
 
+  const blanksTotal = hiddenIndices.size;
+  const blanksDone = Array.from(hiddenIndices).filter(i => states[i] === "correct").length;
+  const lineComplete = blanksTotal > 0 && blanksDone === blanksTotal;
+
   return (
-    <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 py-1">
-      <span className="text-stone-600 text-xs mr-1 select-none tabular-nums">
-        {verse.id}.
+    <div
+      className={`group flex flex-wrap items-baseline gap-x-1.5 gap-y-2
+                  py-2.5 sm:py-2 px-2 sm:px-3 -mx-2 sm:-mx-3
+                  rounded-lg transition-all duration-200
+                  ${lineComplete ? '' : 'hover:bg-white/[0.01]'}`}
+      style={lineComplete ? {
+        background: 'rgba(74, 222, 128, 0.025)',
+        borderLeft: '2px solid rgba(74, 222, 128, 0.18)',
+      } : {
+        borderLeft: '2px solid transparent',
+      }}
+    >
+      <span
+        className="text-xs mr-0.5 select-none tabular-nums shrink-0 transition-colors duration-200"
+        style={{ color: lineComplete ? 'rgba(74, 222, 128, 0.3)' : 'var(--text-muted)' }}
+      >
+        {verse.id}
       </span>
+
       {words.map((word, idx) => {
         if (!hiddenIndices.has(idx)) {
           return (
-            <span key={idx} className="text-stone-300 font-serif text-base leading-relaxed">
+            <span key={idx} className="font-serif leading-relaxed"
+              style={{ color: 'var(--text-primary)', fontSize: '1.1rem' }}>
               {word}
             </span>
           );
@@ -76,14 +95,20 @@ export default function QuizLine({ qv, onCorrect, onReveal }: Props) {
         const state = states[idx] ?? "idle";
         const hint = hints[idx];
         const bareWord = word.replace(/[;,.]$/g, "");
+        const inputWidth = `${Math.max(bareWord.length * 0.65 + 1.4, 3.5)}rem`;
 
         if (state === "correct") {
           return (
-            <span
-              key={idx}
-              className="inline-block px-1.5 py-0.5 rounded text-green-300 font-serif font-semibold
-                         bg-green-900/30 border border-green-700/40 text-base leading-relaxed"
-            >
+            <span key={idx}
+              className="inline-block font-serif font-semibold leading-relaxed animate-correct-pop"
+              style={{
+                color: 'var(--success)',
+                fontSize: '1.1rem',
+                padding: '2px 10px',
+                borderRadius: '6px',
+                background: 'rgba(74, 222, 128, 0.06)',
+                border: '1px solid rgba(74, 222, 128, 0.18)',
+              }}>
               {word}
             </span>
           );
@@ -98,24 +123,27 @@ export default function QuizLine({ qv, onCorrect, onReveal }: Props) {
               onChange={(e) => handleChange(idx, e.target.value)}
               onBlur={() => handleCheck(idx)}
               onKeyDown={(e) => handleKeyDown(e, idx)}
-              placeholder={hint ? bareWord[0] + "…" : "___"}
-              style={{ width: `${Math.max(bareWord.length * 0.62 + 1.2, 3)}rem` }}
-              className={`
-                px-1.5 py-0.5 text-base font-serif rounded border outline-none
-                bg-stone-900/80 text-amber-200 placeholder-stone-600
-                transition-all duration-150
-                ${state === "wrong"
-                  ? "border-red-500/70 animate-shake bg-red-900/20"
-                  : "border-amber-700/40 focus:border-amber-500 focus:bg-stone-800"
-                }
-              `}
+              placeholder={hint ? bareWord[0] + "…" : "···"}
+              style={{ width: inputWidth }}
+              className={`quiz-input px-2.5 py-1.5 leading-normal
+                ${state === "wrong" ? "is-wrong animate-shake" : ""}`}
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              enterKeyHint="done"
             />
             <button
               onClick={() => handleHint(idx)}
-              title="Gợi ý"
-              className="text-stone-600 hover:text-amber-500 text-xs transition-colors px-0.5 leading-none"
+              title="Gợi ý chữ cái đầu"
+              className="flex items-center justify-center w-7 h-7 sm:w-6 sm:h-6 rounded-md
+                         transition-all duration-200 active:scale-90"
+              style={{
+                color: hint ? 'var(--accent)' : 'var(--text-muted)',
+                background: hint ? 'var(--accent-ghost)' : 'transparent',
+              }}
+              aria-label="Gợi ý"
             >
-              ?
+              {hint ? <Lightbulb size={14} /> : <HelpCircle size={14} />}
             </button>
           </span>
         );
