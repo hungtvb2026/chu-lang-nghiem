@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { NotificationProvider } from "@/lib/useNotifications";
 
 export const metadata: Metadata = {
   title: "Chú Lăng Nghiêm – Học Thuộc",
@@ -20,13 +21,15 @@ export const viewport: Viewport = {
   themeColor: "#07070d",
 };
 
+import { ThemeProvider } from "@/components/ThemeProvider";
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" className="dark">
+    <html lang="vi" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -35,7 +38,12 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem>
+          <NotificationProvider>{children}</NotificationProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
+

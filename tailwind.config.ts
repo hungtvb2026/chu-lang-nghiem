@@ -14,8 +14,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        serif: ["Noto Serif", "Georgia", "serif"],
-        sans: ["Inter", "system-ui", "sans-serif"],
+        serif: ["Crimson Pro", "Palatino Linotype", "Georgia", "serif"],
+        sans: ["Plus Jakarta Sans", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
       },
     },
   },

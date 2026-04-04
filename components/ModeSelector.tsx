@@ -1,8 +1,8 @@
 "use client";
 
-export type PracticeMode = "fill" | "progressive" | "flash" | "shuffle";
+export type PracticeMode = "fill" | "progressive" | "flash" | "shuffle" | "smart";
 
-import { PenLine, TrendingUp, Zap, Shuffle } from "lucide-react";
+import { PenLine, TrendingUp, Zap, Shuffle, BrainCircuit } from "lucide-react";
 
 const MODES: {
   value: PracticeMode;
@@ -14,6 +14,7 @@ const MODES: {
   { value: "progressive", icon: TrendingUp,  label: "Tiến độ",    desc: "Tự động tăng độ khó" },
   { value: "flash",       icon: Zap,         label: "Flash",      desc: "Nhìn rồi ghi lại từ trí nhớ" },
   { value: "shuffle",     icon: Shuffle,     label: "Ngẫu nhiên", desc: "Thứ tự ngẫu nhiên" },
+  { value: "smart",       icon: BrainCircuit,label: "Ôn tập",     desc: "Ôn tập thông minh câu sai" },
 ];
 
 type Props = {

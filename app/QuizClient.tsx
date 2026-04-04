@@ -1,23 +1,19 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from "react";
+import { useState, useMemo, useCallback, useEffect, type ReactNode } from "react";
 import { Verse, DeSection, DE_LABELS } from "@/lib/types";
-import {
-  generateQuiz,
-  QuizVerse,
-  Difficulty,
-  DIFFICULTY_CONFIG,
-} from "@/lib/quiz";
+import { DIFFICULTY_CONFIG } from "@/lib/quiz";
 import { useSettings } from "@/lib/useSettings";
 import { useProgress, levelToDifficulty } from "@/lib/useProgress";
 import { useGameStats } from "@/lib/useGameStats";
 import { useSessionTimer } from "@/lib/useSessionTimer";
 import { checkNewAchievements, type AchievementCheckData } from "@/lib/achievements";
+import { useQuizEngine } from "@/lib/useQuizEngine";
+import { useNotifications } from "@/lib/useNotifications";
 import DeSelector from "@/components/DeSelector";
 import DifficultySelector from "@/components/DifficultySelector";
 import ModeSelector, { PracticeMode } from "@/components/ModeSelector";
 import ProgressBar from "@/components/ProgressBar";
-import QuizLine from "@/components/QuizLine";
 import FlashMode from "@/components/FlashMode";
 import ShuffleMode from "@/components/ShuffleMode";
 import FullTextView from "@/components/FullTextView";
@@ -25,14 +21,21 @@ import StatsTab from "@/components/StatsTab";
 import StreakBadge from "@/components/StreakBadge";
 import LevelBadge from "@/components/LevelBadge";
 import DailyGoalRing from "@/components/DailyGoalRing";
-import XPPopup, { triggerXPPopup } from "@/components/XPPopup";
-import AchievementToast, { showAchievementToast } from "@/components/AchievementToast";
 import ConfettiCelebration from "@/components/ConfettiCelebration";
 import SkeletonLoader from "@/components/SkeletonLoader";
-import { PenLine, BookOpen, BarChart3, Settings, RotateCcw, Flower2, Star, ChevronLeft, ChevronRight } from "lucide-react";
+import QuizContent from "@/components/QuizContent";
+import CompletionScreen from "@/components/CompletionScreen";
+import ThemeToggle from "@/components/ThemeToggle";
+import {
+  PenLine,
+  BookOpen,
+  BarChart3,
+  Settings,
+  RotateCcw,
+  Star,
+} from "lucide-react";
+import { useUrlState } from "@/lib/useUrlState";
 
-const ITEMS_PER_PAGE = 25;
-const XP_PER_CORRECT = 10;
 const XP_BONUS_COMPLETE = 100;
 
 type TabType = "quiz" | "text" | "stats";
@@ -47,71 +50,31 @@ export default function QuizClient({ allVerses, sections }: Props) {
   const progress = useProgress();
   const game = useGameStats();
   const session = useSessionTimer();
-
-  const [seed, setSeed] = useState(0);
-  const [correctSet, setCorrectSet] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<TabType>("quiz");
-  const [mode, setMode] = useState<PracticeMode>("fill");
+  const { showAchievement } = useNotifications();
+  const { tab, mode, de, setTab, setMode, setDe } = useUrlState();
   const [completionMsg, setCompletionMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [page, setPage] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [prevLevel, setPrevLevel] = useState(1);
 
-  const progressiveDifficulty: Difficulty = levelToDifficulty(
-    progress.getLevel(settings.de)
-  );
-  const activeDifficulty: Difficulty =
+  // Use URL `de` param as the active section, falling back to settings
+  const activeDe = de !== 0 ? de : settings.de;
+
+  const progressiveDifficulty = levelToDifficulty(progress.getLevel(activeDe));
+  const activeDifficulty =
     mode === "progressive" ? progressiveDifficulty : settings.difficulty;
-  const flashDifficulty: Difficulty = "expert";
 
+  // Filter verses by selected Đệ
   const verses = useMemo(() => {
-    if (settings.de === 0) return allVerses;
-    return allVerses.filter((v) => v.de === settings.de);
-  }, [allVerses, settings.de]);
-
-  const quizVerses: QuizVerse[] = useMemo(
-    () =>
-      generateQuiz(
-        verses,
-        mode === "flash" ? flashDifficulty : activeDifficulty,
-        seed
-      ),
-    [verses, activeDifficulty, mode, seed]
-  );
-
-  const totalBlanks = useMemo(
-    () => quizVerses.reduce((sum, qv) => sum + qv.hiddenIndices.size, 0),
-    [quizVerses]
-  );
-
-  // Pagination
-  const totalPages = Math.ceil(quizVerses.length / ITEMS_PER_PAGE);
-  const paginatedVerses = useMemo(() => {
-    const start = page * ITEMS_PER_PAGE;
-    return quizVerses.slice(start, start + ITEMS_PER_PAGE);
-  }, [quizVerses, page]);
-
-  const allBlankIds = useMemo(() => {
-    const ids: string[] = [];
-    for (const qv of paginatedVerses) {
-      const sorted = Array.from(qv.hiddenIndices).sort((a, b) => a - b);
-      for (const idx of sorted) ids.push(`blank-${qv.verse.id}-${idx}`);
+    let list = allVerses;
+    if (activeDe !== 0) list = allVerses.filter((v) => v.de === activeDe);
+    if (mode === "smart") {
+      list = list
+        .filter((v) => (game.stats.wrongVerseCounts[v.id] || 0) > 0)
+        .sort((a, b) => game.stats.wrongVerseCounts[b.id] - game.stats.wrongVerseCounts[a.id]);
     }
-    return ids;
-  }, [paginatedVerses]);
-
-  const allBlankIdsRef = useRef(allBlankIds);
-  allBlankIdsRef.current = allBlankIds;
-
-  // Level up detection
-  useEffect(() => {
-    if (game.stats.level > prevLevel && prevLevel > 0) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 3000);
-    }
-    setPrevLevel(game.stats.level);
-  }, [game.stats.level, prevLevel]);
+    return list;
+  }, [allVerses, activeDe, mode, game.stats.wrongVerseCounts]);
 
   // Achievement checking
   const checkAchievements = useCallback(() => {
@@ -130,83 +93,118 @@ export default function QuizClient({ allVerses, sections }: Props) {
     const newAchievements = checkNewAchievements(data, game.stats.achievements);
     for (const a of newAchievements) {
       game.unlockAchievement(a.id);
-      showAchievementToast(a);
+      showAchievement(a);
     }
-  }, [game]);
+  }, [game, showAchievement]);
+
+  // Quiz engine hook
+  const quiz = useQuizEngine({
+    verses,
+    difficulty: activeDifficulty,
+    mode,
+    itemsPerPage: settings.itemsPerPage,
+    onXP: game.addXP,
+    onCorrect: (verseId) => {
+      game.addCorrect();
+      if (mode === "smart") {
+        game.healWrong(verseId);
+      }
+    },
+    onWrong: game.addWrong,
+  });
+
+  // Level up detection
+  useEffect(() => {
+    if (game.stats.level > prevLevel && prevLevel > 0) {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 3000);
+    }
+    setPrevLevel(game.stats.level);
+  }, [game.stats.level, prevLevel]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
-      if (e.key === "ArrowLeft" && page > 0) setPage((p) => p - 1);
-      else if (e.key === "ArrowRight" && page < totalPages - 1) setPage((p) => p + 1);
+      if (e.key === "ArrowLeft" && quiz.page > 0) quiz.setPage((p) => p - 1);
+      else if (e.key === "ArrowRight" && quiz.page < quiz.totalPages - 1)
+        quiz.setPage((p) => p + 1);
       else if (e.key === "Escape") setSettingsOpen(false);
-      else if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); handleRefresh(); }
-      else if (e.key === "1") handleModeChange("fill");
+      else if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        handleRefresh();
+      } else if (e.key === "1") handleModeChange("fill");
       else if (e.key === "2") handleModeChange("progressive");
       else if (e.key === "3") handleModeChange("flash");
       else if (e.key === "4") handleModeChange("shuffle");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [page, totalPages]);
-
-  const handleCorrect = useCallback(
-    (verseId: number, wordIdx: number) => {
-      setCorrectSet((prev) => new Set(prev).add(`${verseId}-${wordIdx}`));
-      game.addXP(XP_PER_CORRECT);
-      game.addCorrect();
-      const el = document.getElementById(`blank-${verseId}-${wordIdx}`);
-      if (el) triggerXPPopup(XP_PER_CORRECT, el);
-      setTimeout(checkAchievements, 100);
-      // Auto-focus next blank
-      const ids = allBlankIdsRef.current;
-      const pos = ids.indexOf(`blank-${verseId}-${wordIdx}`);
-      const order = [...ids.slice(pos + 1), ...ids.slice(0, pos)];
-      for (const id of order) {
-        const nextEl = document.getElementById(id) as HTMLInputElement | null;
-        if (nextEl) { nextEl.focus(); break; }
-      }
-    },
-    [game, checkAchievements]
-  );
-
-  const handleWrong = useCallback(() => { game.addWrong(); }, [game]);
+  }, [quiz.page, quiz.totalPages]);
 
   const handleRefresh = () => {
-    setSeed((s) => s + 1);
-    setCorrectSet(new Set());
+    quiz.refresh();
     setCompletionMsg(null);
-    setPage(0);
   };
 
-  const handleDeChange = (de: typeof settings.de) => {
-    setSettings({ de });
-    setCorrectSet(new Set());
+  const handleDeChange = (nextDe: 0 | 1 | 2 | 3 | 4 | 5) => {
+    setDe(nextDe);
+    setSettings({ de: nextDe });
+    quiz.refresh();
     setCompletionMsg(null);
-    setPage(0);
   };
 
-  const handleDifficultyChange = (difficulty: Difficulty) => {
-    setSettings({ difficulty });
-    setCorrectSet(new Set());
-    setPage(0);
-  };
+  const handleExport = useCallback(() => {
+    try {
+      const data = {
+        stats: JSON.parse(localStorage.getItem("chu_game_stats") || "{}"),
+        settings: JSON.parse(localStorage.getItem("chu_settings") || "{}"),
+        exportDate: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chu-lang-nghiem-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Lỗi khi tải dữ liệu backup.");
+    }
+  }, []);
+
+  const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.stats) localStorage.setItem("chu_game_stats", JSON.stringify(data.stats));
+        if (data.settings) localStorage.setItem("chu_settings", JSON.stringify(data.settings));
+        alert("Khôi phục thành công! Trang web sẽ tải lại.");
+        window.location.reload();
+      } catch (err) {
+        alert("File backup không hợp lệ.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, []);
 
   const handleModeChange = (m: PracticeMode) => {
     setMode(m);
-    setCorrectSet(new Set());
+    quiz.refresh();
     setCompletionMsg(null);
-    setSeed((s) => s + 1);
-    setPage(0);
   };
 
   const handleProgressiveComplete = () => {
-    progress.increment(settings.de);
+    progress.increment(activeDe);
     game.addXP(XP_BONUS_COMPLETE);
     game.completeSession(session.seconds);
-    if (settings.de !== 0) game.completeDe(settings.de);
-    const newLevel = progress.getLevel(settings.de) + 1;
+    if (activeDe !== 0) game.completeDe(activeDe);
+    const newLevel = progress.getLevel(activeDe) + 1;
     const newDiff = levelToDifficulty(newLevel);
     const label = DIFFICULTY_CONFIG[newDiff].label;
     setCompletionMsg(
@@ -223,6 +221,7 @@ export default function QuizClient({ allVerses, sections }: Props) {
     game.addXP(XP_BONUS_COMPLETE);
     game.completeSession(session.seconds);
     if (wrongIds.length === 0) game.setFlashPerfect();
+    else wrongIds.forEach((id) => game.addWrong(id));
     setCompletionMsg(
       wrongIds.length === 0
         ? "Tuyệt vời! Bạn nhớ đúng tất cả!"
@@ -242,187 +241,269 @@ export default function QuizClient({ allVerses, sections }: Props) {
     setTimeout(checkAchievements, 200);
   };
 
+  const handleFillComplete = () => {
+    game.addXP(XP_BONUS_COMPLETE);
+    game.completeSession(session.seconds);
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3000);
+    quiz.refresh();
+    setTimeout(checkAchievements, 200);
+  };
+
   const groupedByDe = useMemo(() => {
-    if (settings.de !== 0)
-      return [{ de: settings.de, label: DE_LABELS[settings.de], qvs: paginatedVerses }];
+    if (activeDe !== 0)
+      return [{ de: activeDe, label: DE_LABELS[activeDe], qvs: quiz.paginatedVerses }];
     return sections
       .map((sec) => ({
         de: sec.de,
         label: sec.label,
-        qvs: paginatedVerses.filter((qv) => qv.verse.de === sec.de),
+        qvs: quiz.paginatedVerses.filter((qv) => qv.verse.de === sec.de),
       }))
       .filter((g) => g.qvs.length > 0);
-  }, [paginatedVerses, settings.de, sections]);
+  }, [quiz.paginatedVerses, activeDe, sections]);
 
   if (!hydrated || !game.hydrated) return <SkeletonLoader />;
 
-  const isComplete =
-    mode !== "flash" && mode !== "shuffle" &&
-    totalBlanks > 0 && correctSet.size >= totalBlanks;
-
-  // Tab config for bottom nav
   const TABS: { id: TabType; label: string; icon: ReactNode }[] = [
-    { id: "quiz", label: "Luyện tập", icon: <PenLine size={18} /> },
-    { id: "text", label: "Toàn bộ", icon: <BookOpen size={18} /> },
-    { id: "stats", label: "Thống kê", icon: <BarChart3 size={18} /> },
+    { id: "quiz", label: "Luyện tập", icon: <PenLine size={20} /> },
+    { id: "text", label: "Toàn bộ", icon: <BookOpen size={20} /> },
+    { id: "stats", label: "Thống kê", icon: <BarChart3 size={20} /> },
   ];
 
   return (
     <div className="min-h-screen flex flex-col pb-16 sm:pb-0">
-      {/* Global overlays */}
-      <XPPopup />
-      <AchievementToast />
       <ConfettiCelebration active={showConfetti} />
 
-      {/* ─── Top Header (minimal, clean) ─── */}
+      {/* ─── Header ─── */}
       <header className="sticky top-0 z-40 glass-header gradient-border">
         <div className="max-w-5xl mx-auto px-4 py-2.5">
           {/* Row 1: Logo + Gamification + Actions */}
           <div className="flex items-center justify-between gap-2">
-            {/* Left: Title */}
-            <h1 className="text-base sm:text-lg font-bold font-serif tracking-wide text-gradient shrink-0">
+            <h1 className="text-lg sm:text-xl font-bold font-serif tracking-wide text-gradient shrink-0">
               Chú Lăng Nghiêm
             </h1>
 
-            {/* Center: Gamification badges - compact */}
             <div className="flex items-center gap-1 sm:gap-1.5">
               <LevelBadge level={game.stats.level} totalXP={game.stats.totalXP} />
               <StreakBadge streak={game.stats.currentStreak} bestStreak={game.stats.bestStreak} />
               <DailyGoalRing current={game.stats.dailyXP} goal={game.stats.dailyGoal} />
               <span
                 className="text-[11px] tabular-nums px-1.5 py-0.5 rounded-md font-semibold hidden sm:inline-flex sm:items-center sm:gap-1"
-                style={{ background: 'var(--accent-ghost)', color: 'var(--accent)' }}
+                style={{ background: "var(--accent-ghost)", color: "var(--accent)" }}
               >
                 <Star size={10} fill="currentColor" />
                 {game.stats.totalXP.toLocaleString()}
               </span>
             </div>
 
-            {/* Right: Actions */}
             <div className="flex items-center gap-1">
               <span
                 className="text-[10px] tabular-nums px-1.5 py-0.5 rounded hidden sm:inline-block"
-                style={{ color: 'var(--text-muted)' }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {session.formatted}
               </span>
+              <ThemeToggle />
               {tab === "quiz" && (
                 <button
                   onClick={() => setSettingsOpen(!settingsOpen)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg
-                             transition-all duration-200 active:scale-90"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-90"
                   style={{
-                    background: settingsOpen ? 'var(--accent-ghost)' : 'transparent',
-                    color: settingsOpen ? 'var(--accent)' : 'var(--text-secondary)',
+                    background: settingsOpen ? "var(--accent-ghost)" : "transparent",
+                    color: settingsOpen ? "var(--accent)" : "var(--text-secondary)",
                   }}
                   aria-label="Cài đặt"
                 >
-                  <Settings size={16} />
+                  <Settings size={20} />
                 </button>
               )}
               <button
                 onClick={handleRefresh}
-                className="w-8 h-8 flex items-center justify-center rounded-lg
-                           transition-all duration-300 active:scale-90"
+                className="w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-300 active:scale-90"
                 style={{
-                  background: 'var(--accent-ghost)',
-                  border: '1px solid var(--border-active)',
+                  background: "var(--accent-ghost)",
+                  border: "1px solid var(--border-active)",
                 }}
                 aria-label="Làm mới"
               >
-                <RotateCcw size={14} style={{ color: 'var(--accent)' }} />
+                <RotateCcw size={18} style={{ color: "var(--accent)" }} />
               </button>
             </div>
           </div>
 
-          {/* Row 2: Desktop Tab Bar (hidden on mobile — uses bottom nav instead) */}
+          {/* Row 2: Desktop tab bar + Mode selector */}
           <div className="hidden sm:flex items-center gap-1 mt-2">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium
-                           transition-all duration-200 active:scale-95"
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-95"
                 style={{
-                  color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
-                  background: tab === t.id ? 'var(--accent-ghost)' : 'transparent',
-                  border: tab === t.id ? '1px solid var(--border-active)' : '1px solid transparent',
+                  color: tab === t.id ? "var(--accent)" : "var(--text-secondary)",
+                  background: tab === t.id ? "var(--accent-ghost)" : "transparent",
+                  border:
+                    tab === t.id
+                      ? "1px solid var(--border-active)"
+                      : "1px solid transparent",
                 }}
               >
-                <span className="flex items-center gap-1.5">{t.icon} {t.label}</span>
+                <span className="flex items-center gap-1.5">
+                  {t.icon} {t.label}
+                </span>
               </button>
             ))}
-            {/* Spacer */}
             <div className="flex-1" />
-            {/* Mode selector on same row for desktop when in quiz tab */}
-            {tab === "quiz" && (
-              <ModeSelector value={mode} onChange={handleModeChange} />
-            )}
+            {tab === "quiz" && <ModeSelector value={mode} onChange={handleModeChange} />}
           </div>
 
-          {/* Row 2 (mobile only): Mode selector when quiz tab */}
+          {/* Mobile mode selector */}
           {tab === "quiz" && (
             <div className="mt-2 -mx-4 px-4 overflow-x-auto scrollbar-none sm:hidden">
               <ModeSelector value={mode} onChange={handleModeChange} />
             </div>
           )}
 
-          {/* Row 3: Progress bar (fill/progressive) */}
+          {/* Progress bar */}
           {tab === "quiz" && (mode === "fill" || mode === "progressive") && (
             <div className="mt-2">
-              <ProgressBar correct={correctSet.size} total={totalBlanks} />
+              <ProgressBar correct={quiz.correctSet.size} total={quiz.totalBlanks} />
             </div>
           )}
         </div>
 
-        {/* Settings Panel */}
+        {/* Settings panel */}
         {tab === "quiz" && settingsOpen && (
           <div
             className="animate-slide-down border-t"
             style={{
-              borderColor: 'var(--border-subtle)',
-              background: 'rgba(7, 7, 13, 0.85)',
-              backdropFilter: 'blur(16px)',
+              borderColor: "var(--border-subtle)",
+              background: "rgba(7, 7, 13, 0.85)",
+              backdropFilter: "blur(16px)",
             }}
           >
             <div className="max-w-5xl mx-auto px-4 py-3 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <span className="text-xs font-medium shrink-0" style={{ color: 'var(--text-muted)' }}>Phần</span>
-                <DeSelector value={settings.de} onChange={handleDeChange} />
+                <span
+                  className="text-xs font-medium shrink-0"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Phần
+                </span>
+                <DeSelector value={activeDe} onChange={handleDeChange} />
               </div>
 
-              {mode === "progressive" ? (
+              {tab === "quiz" && mode === "progressive" ? (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                  <span className="text-xs font-medium shrink-0" style={{ color: 'var(--text-muted)' }}>Độ khó</span>
+                  <span className="text-xs font-medium shrink-0" style={{ color: "var(--text-muted)" }}>Độ khó</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium px-3 py-1.5 rounded-lg"
-                      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-active)', color: 'var(--accent)' }}>
+                      style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-active)", color: "var(--accent)" }}>
                       {DIFFICULTY_CONFIG[progressiveDifficulty].emoji}{" "}
                       {DIFFICULTY_CONFIG[progressiveDifficulty].label}
-                      <span className="ml-1.5" style={{ color: 'var(--text-muted)' }}>
-                        Lv.{progress.getLevel(settings.de)}
-                      </span>
+                      <span className="ml-1.5" style={{ color: "var(--text-muted)" }}>Lv.{progress.getLevel(activeDe)}</span>
                     </span>
-                    <button onClick={() => { progress.reset(settings.de); handleRefresh(); }}
+                    <button
+                      onClick={() => {
+                        progress.reset(activeDe);
+                        handleRefresh();
+                      }}
                       className="text-xs px-2 py-1 rounded-md transition-colors duration-200 hover:text-red-400 active:scale-95"
-                      style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                      style={{ color: "var(--text-muted)", background: "var(--bg-elevated)" }}
+                    >
                       Reset
                     </button>
                   </div>
                 </div>
               ) : mode === "fill" || mode === "shuffle" ? (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                  <span className="text-xs font-medium shrink-0" style={{ color: 'var(--text-muted)' }}>Độ khó</span>
-                  <DifficultySelector value={settings.difficulty} onChange={handleDifficultyChange} />
+                  <span
+                    className="text-xs font-medium shrink-0"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Độ khó
+                  </span>
+                  <DifficultySelector
+                    value={settings.difficulty}
+                    onChange={(d) => {
+                      setSettings({ difficulty: d });
+                      quiz.resetCorrects();
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Độ khó</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Tất cả từ bị ẩn</span>
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Độ khó
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Tất cả từ bị ẩn
+                  </span>
                 </div>
               )}
 
-              {/* Keyboard hints - desktop only */}
+              {/* ── Advanced settings ── */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <span className="text-xs font-medium shrink-0" style={{ color: "var(--text-muted)" }}>Mục tiêu XP</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range" min={20} max={200} step={10}
+                    value={settings.dailyGoal}
+                    onChange={(e) => setSettings({ dailyGoal: Number(e.target.value) })}
+                    className="w-28 accent-amber-400"
+                    aria-label="Daily XP goal"
+                  />
+                  <span className="text-xs tabular-nums" style={{ color: "var(--accent)" }}>{settings.dailyGoal} XP</span>
+                </div>
+              </div>
+
+              {mode === "flash" && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <span className="text-xs font-medium shrink-0" style={{ color: "var(--text-muted)" }}>Flash thời gian</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={1} max={10} step={1}
+                      value={settings.flashDuration}
+                      onChange={(e) => setSettings({ flashDuration: Number(e.target.value) })}
+                      className="w-28 accent-amber-400"
+                      aria-label="Flash memorize duration"
+                    />
+                    <span className="text-xs tabular-nums" style={{ color: "var(--accent)" }}>{settings.flashDuration}s</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <span className="text-xs font-medium shrink-0" style={{ color: "var(--text-muted)" }}>Câu/trang</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range" min={10} max={50} step={5}
+                    value={settings.itemsPerPage}
+                    onChange={(e) => setSettings({ itemsPerPage: Number(e.target.value) })}
+                    className="w-28 accent-amber-400"
+                    aria-label="Items per page"
+                  />
+                  <span className="text-xs tabular-nums" style={{ color: "var(--accent)" }}>{settings.itemsPerPage}</span>
+                </div>
+              </div>
+
+              {/* ── Backup ── */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                <span className="text-xs font-medium shrink-0" style={{ color: "var(--text-muted)" }}>Dữ liệu</span>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleExport} className="text-[11px] px-3 py-1.5 rounded-lg border hover:bg-white/5 active:scale-95 transition-all" style={{ borderColor: "var(--border-active)", color: "var(--text-primary)" }}>
+                    Tải file Backup
+                  </button>
+                  <label className="text-[11px] px-3 py-1.5 rounded-lg border hover:bg-white/5 active:scale-95 transition-all cursor-pointer" style={{ borderColor: "var(--border-active)", color: "var(--text-primary)" }}>
+                    Khôi phục
+                    <input type="file" accept="application/json" className="hidden" onChange={handleImport} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Keyboard hints — desktop only */}
               <div className="hidden sm:flex flex-wrap gap-2 pt-1">
                 {[
                   { key: "←→", desc: "Chuyển trang" },
@@ -430,9 +511,15 @@ export default function QuizClient({ allVerses, sections }: Props) {
                   { key: "Ctrl+↵", desc: "Làm mới" },
                   { key: "Esc", desc: "Đóng" },
                 ].map((s) => (
-                  <span key={s.key} className="text-[10px] px-1.5 py-0.5 rounded"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-                    <kbd className="font-mono mr-1" style={{ color: 'var(--text-secondary)' }}>{s.key}</kbd>{s.desc}
+                  <span
+                    key={s.key}
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}
+                  >
+                    <kbd className="font-mono mr-1" style={{ color: "var(--text-secondary)" }}>
+                      {s.key}
+                    </kbd>
+                    {s.desc}
                   </span>
                 ))}
               </div>
@@ -449,15 +536,24 @@ export default function QuizClient({ allVerses, sections }: Props) {
           <FullTextView verses={verses} sections={sections} selectedDe={settings.de} />
         ) : (
           <>
+            {/* Completion message banner */}
             {completionMsg && (
               <div className="max-w-4xl mx-auto px-4 pt-4 sm:pt-6 animate-fade-in-up">
-                <div className="glass-card rounded-xl px-4 py-3 sm:px-5 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                  style={{ boxShadow: '0 0 20px var(--accent-glow)' }}>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>{completionMsg}</p>
-                  <button onClick={handleRefresh}
-                    className="shrink-0 w-full sm:w-auto px-4 py-2.5 rounded-lg text-sm font-medium
-                               transition-all duration-300 active:scale-95 text-center"
-                    style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-dark))', color: 'white' }}>
+                <div
+                  className="glass-card rounded-xl px-4 py-3 sm:px-5 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                  style={{ boxShadow: "0 0 20px var(--accent-glow)" }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
+                    {completionMsg}
+                  </p>
+                  <button
+                    onClick={handleRefresh}
+                    className="shrink-0 w-full sm:w-auto px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 active:scale-95 text-center"
+                    style={{
+                      background: "linear-gradient(135deg, var(--accent), var(--accent-dark))",
+                      color: "white",
+                    }}
+                  >
                     Làm mới
                   </button>
                 </div>
@@ -465,150 +561,76 @@ export default function QuizClient({ allVerses, sections }: Props) {
             )}
 
             {mode === "flash" && !completionMsg && (
-              <FlashMode quizVerses={quizVerses} flashDuration={3} onComplete={handleFlashComplete} />
+              <FlashMode
+                quizVerses={quiz.quizVerses}
+                flashDuration={settings.flashDuration}
+                onComplete={handleFlashComplete}
+              />
             )}
 
             {mode === "shuffle" && !completionMsg && (
-              <ShuffleMode quizVerses={quizVerses} seed={seed} onComplete={handleShuffleComplete} />
+              <ShuffleMode
+                quizVerses={quiz.quizVerses}
+                seed={quiz.seed}
+                onComplete={handleShuffleComplete}
+              />
             )}
 
-            {(mode === "fill" || mode === "progressive") && (
-              <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5 sm:space-y-6 animate-fade-in-up">
-                {totalPages > 1 && (
-                  <div className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Trang {page + 1}/{totalPages}
-                    <span className="ml-1.5 text-slate-600">
-                      (câu {page * ITEMS_PER_PAGE + 1}–{Math.min((page + 1) * ITEMS_PER_PAGE, quizVerses.length)})
-                    </span>
+            {(mode === "fill" || mode === "progressive" || mode === "smart") && (
+              <>
+                {verses.length === 0 && mode === "smart" ? (
+                  <div className="max-w-4xl mx-auto px-4 py-12 text-center animate-fade-in-up">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style={{ background: 'var(--success-ghost)', color: 'var(--success)' }}>
+                      <Star size={32} />
+                    </div>
+                    <h2 className="text-xl font-bold mb-2 text-gradient">Tuyệt vời!</h2>
+                    <p style={{ color: "var(--text-muted)" }}>Bạn không có câu nào cần ôn tập ở phần này.</p>
                   </div>
+                ) : (
+                  <QuizContent
+                    groupedByDe={groupedByDe}
+                    correctSet={quiz.correctSet}
+                    seed={quiz.seed}
+                    page={quiz.page}
+                    totalPages={quiz.totalPages}
+                    quizVerses={quiz.quizVerses}
+                    onCorrect={quiz.handleCorrect}
+                    onWrong={quiz.handleWrong}
+                    onPageChange={quiz.setPage}
+                  />
                 )}
 
-                {groupedByDe.map(({ de, label, qvs }) => (
-                  <section key={de}>
-                    <div className="lotus-divider mb-3 sm:mb-4">
-                      <h2 className="font-serif font-semibold text-base sm:text-lg px-3" style={{ color: 'var(--accent)' }}>
-                        {label}
-                      </h2>
-                    </div>
-                    <div className="glass-card rounded-xl sm:rounded-2xl px-3 sm:px-5 py-3 sm:py-4 space-y-0.5">
-                      {qvs.map((qv) =>
-                        qv.hiddenIndices.size === 0 ? (
-                          <div key={qv.verse.id} className="flex flex-wrap gap-1 py-1.5 px-1 sm:px-2">
-                            <span className="text-xs mr-0.5 select-none tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                              {qv.verse.id}.
-                            </span>
-                            {qv.words.map((w, i) => (
-                              <span key={i} className="font-serif text-[15px] sm:text-base" style={{ color: 'var(--text-primary)' }}>
-                                {w}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <QuizLine key={`${qv.verse.id}-${seed}`} qv={qv}
-                            onCorrect={(wordIdx) => handleCorrect(qv.verse.id, wordIdx)}
-                            onReveal={() => {}} onWrong={handleWrong} />
-                        )
-                      )}
-                    </div>
-                  </section>
-                ))}
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-1.5 pt-2">
-                    <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                      className="h-10 px-4 rounded-lg text-sm font-medium transition-all duration-200
-                                 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
-                      style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
-                      <ChevronLeft size={16} />
-                    </button>
-
-                    {Array.from({ length: totalPages }, (_, i) => {
-                      const showPage = i === 0 || i === totalPages - 1 || Math.abs(i - page) <= 1;
-                      const showEllipsis = i === page - 2 || i === page + 2;
-                      if (!showPage && !showEllipsis) return null;
-                      if (showEllipsis) return <span key={i} className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>…</span>;
-                      return (
-                        <button key={i} onClick={() => setPage(i)}
-                          className={`w-10 h-10 rounded-lg text-sm font-medium transition-all duration-200 active:scale-95
-                            ${page === i ? "text-white" : "hover:text-slate-200"}`}
-                          style={page === i ? {
-                            background: 'linear-gradient(135deg, var(--accent), var(--accent-dark))',
-                            boxShadow: '0 2px 8px var(--accent-glow)',
-                          } : { color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
-                          {i + 1}
-                        </button>
-                      );
-                    })}
-
-                    <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                      disabled={page === totalPages - 1}
-                      className="h-10 px-4 rounded-lg text-sm font-medium transition-all duration-200
-                                 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
-                      style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
+                {quiz.isComplete && verses.length > 0 && !completionMsg && (
+                  <CompletionScreen
+                    totalBlanks={quiz.totalBlanks}
+                    mode={mode}
+                    progressiveDifficulty={progressiveDifficulty}
+                    progressiveLevel={progress.getLevel(settings.de)}
+                    onRefresh={handleFillComplete}
+                    onProgressiveComplete={handleProgressiveComplete}
+                    sessionSeconds={session.seconds}
+                  />
                 )}
-
-                {/* Completion */}
-                {isComplete && !completionMsg && (
-                  <div className="text-center py-12 sm:py-16 animate-fade-in-up">
-                    <Flower2 size={56} className="mx-auto mb-4 animate-float" style={{ color: 'var(--accent)' }} />
-                    <p className="text-xl sm:text-2xl font-serif font-semibold text-gradient">
-                      Hoàn thành xuất sắc!
-                    </p>
-                    <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      Điền đúng tất cả {totalBlanks} ô
-                    </p>
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6 px-4">
-                      {mode === "progressive" && (
-                        <button onClick={handleProgressiveComplete}
-                          className="w-full sm:w-auto px-5 py-3 rounded-xl text-sm font-medium transition-all duration-300 active:scale-95"
-                          style={{
-                            background: 'linear-gradient(135deg, var(--accent-ghost), var(--indigo-glow))',
-                            border: '1px solid var(--border-active)', color: 'var(--accent)',
-                          }}>
-                          Ghi nhận & tăng độ khó
-                        </button>
-                      )}
-                      <button onClick={() => {
-                          game.addXP(XP_BONUS_COMPLETE);
-                          game.completeSession(session.seconds);
-                          setShowConfetti(true);
-                          setTimeout(() => setShowConfetti(false), 3000);
-                          handleRefresh();
-                          setTimeout(checkAchievements, 200);
-                        }}
-                        className="w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-semibold text-white
-                                   transition-all duration-300 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-dark))', boxShadow: '0 4px 16px var(--accent-glow)' }}>
-                        Làm mới
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              </>
             )}
           </>
         )}
       </main>
 
-      {/* ─── Bottom Tab Bar (mobile-first) ─── */}
+      {/* ─── Bottom Tab Bar (mobile) ─── */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-50 sm:hidden glass-header"
-        style={{ borderTop: '1px solid var(--border-subtle)' }}
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         <div className="flex items-stretch">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5
-                          transition-colors duration-200 active:scale-95"
+              className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors duration-200 active:scale-95"
               style={{
-                color: tab === t.id ? 'var(--accent)' : 'var(--text-muted)',
-                background: tab === t.id ? 'var(--accent-ghost)' : 'transparent',
+                color: tab === t.id ? "var(--accent)" : "var(--text-muted)",
+                background: tab === t.id ? "var(--accent-ghost)" : "transparent",
               }}
             >
               {t.icon}
@@ -618,13 +640,17 @@ export default function QuizClient({ allVerses, sections }: Props) {
         </div>
       </nav>
 
-      {/* ─── Footer (desktop only) ─── */}
-      <footer className="hidden sm:block text-center py-5 text-xs"
-        style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)' }}>
+      {/* ─── Footer (desktop) ─── */}
+      <footer
+        className="hidden sm:block text-center py-5 text-xs"
+        style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-subtle)" }}
+      >
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-center gap-3">
           <span>Chú Lăng Nghiêm · {new Date().getFullYear()}</span>
           <span>·</span>
-          <span>Level {game.stats.level} · {game.stats.totalXP.toLocaleString()} XP</span>
+          <span>
+            Level {game.stats.level} · {game.stats.totalXP.toLocaleString()} XP
+          </span>
         </div>
       </footer>
     </div>

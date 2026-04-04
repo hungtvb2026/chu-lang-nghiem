@@ -9,6 +9,7 @@ export type DailyEntry = {
 };
 
 export type GameStats = {
+  _version: number; // Schema version for migration
   totalXP: number;
   level: number;
   currentStreak: number;
@@ -24,11 +25,32 @@ export type GameStats = {
   dailyHistory: Record<string, DailyEntry>;
   deCompleted: number[];
   flashPerfect: boolean;
+  wrongVerseCounts: Record<number, number>; // verse.id -> wrong count
 };
 
+const CURRENT_VERSION = 2;
+
+/** Validate that a parsed object has the expected shape (basic type guards) */
+function isValidStats(data: unknown): data is Partial<GameStats> {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  if ("totalXP" in d && typeof d.totalXP !== "number") return false;
+  if ("level" in d && typeof d.level !== "number") return false;
+  if ("achievements" in d && !Array.isArray(d.achievements)) return false;
+  if ("dailyHistory" in d && typeof d.dailyHistory !== "object") return false;
+  return true;
+}
+
+/** Migrate older stored data to current schema */
+function migrate(data: Partial<GameStats>): GameStats {
+  const version = data._version ?? 0;
+  // Future migrations go here: if (version < 2) { ... }
+  return { ...DEFAULT_STATS, ...data, _version: CURRENT_VERSION };
+}
 const STORAGE_KEY = "chu_game_stats";
 
 const DEFAULT_STATS: GameStats = {
+  _version: CURRENT_VERSION,
   totalXP: 0,
   level: 1,
   currentStreak: 0,
@@ -44,6 +66,7 @@ const DEFAULT_STATS: GameStats = {
   dailyHistory: {},
   deCompleted: [],
   flashPerfect: false,
+  wrongVerseCounts: {},
 };
 
 function getToday(): string {
@@ -74,29 +97,32 @@ export function useGameStats() {
   const [stats, setStatsState] = useState<GameStats>(DEFAULT_STATS);
   const [hydrated, setHydrated] = useState(false);
 
-  // Load from localStorage
+  // Load from localStorage with validation + migration
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = { ...DEFAULT_STATS, ...JSON.parse(raw) };
-        // Check streak continuity
-        const today = getToday();
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-
-        if (parsed.lastActiveDate !== today && parsed.lastActiveDate !== yesterday) {
-          // Streak broken
-          parsed.currentStreak = 0;
+        const parsed = JSON.parse(raw);
+        if (!isValidStats(parsed)) {
+          console.warn("[GameStats] Invalid data in localStorage, using defaults");
+        } else {
+          const migrated = migrate(parsed);
+          // Check streak continuity
+          const today = getToday();
+          const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+          if (migrated.lastActiveDate !== today && migrated.lastActiveDate !== yesterday) {
+            migrated.currentStreak = 0;
+          }
+          // Reset daily XP if new day
+          if (migrated.lastActiveDate !== today) {
+            migrated.dailyXP = 0;
+          }
+          setStatsState(migrated);
         }
-
-        // Reset daily XP if new day
-        if (parsed.lastActiveDate !== today) {
-          parsed.dailyXP = 0;
-        }
-
-        setStatsState(parsed);
       }
-    } catch {}
+    } catch {
+      console.warn("[GameStats] Failed to parse localStorage data, using defaults");
+    }
     setHydrated(true);
   }, []);
 
@@ -168,18 +194,34 @@ export function useGameStats() {
     });
   }, [save]);
 
-  const addWrong = useCallback(() => {
+  const addWrong = useCallback((verseId: number) => {
     setStatsState((prev) => {
       const today = getToday();
-      const prevDay = prev.dailyHistory[today] || { xp: 0, correct: 0, wrong: 0 };
-      const next: GameStats = {
+      const currentDaily = prev.dailyHistory[today] || { xp: 0, correct: 0, wrong: 0 };
+      const nextWrongCounts = { ...prev.wrongVerseCounts };
+      nextWrongCounts[verseId] = (nextWrongCounts[verseId] || 0) + 1;
+
+      const next = {
         ...prev,
         totalWrong: prev.totalWrong + 1,
+        wrongVerseCounts: nextWrongCounts,
         dailyHistory: {
           ...prev.dailyHistory,
-          [today]: { ...prevDay, wrong: prevDay.wrong + 1 },
+          [today]: { ...currentDaily, wrong: currentDaily.wrong + 1 },
         },
       };
+      save(next);
+      return next;
+    });
+  }, [save]);
+
+  const healWrong = useCallback((verseId: number) => {
+    setStatsState((prev) => {
+      if (!prev.wrongVerseCounts[verseId]) return prev;
+      const nextWrongCounts = { ...prev.wrongVerseCounts };
+      nextWrongCounts[verseId] = Math.max(0, nextWrongCounts[verseId] - 1);
+      if (nextWrongCounts[verseId] === 0) delete nextWrongCounts[verseId];
+      const next = { ...prev, wrongVerseCounts: nextWrongCounts };
       save(next);
       return next;
     });
@@ -244,6 +286,7 @@ export function useGameStats() {
     addXP,
     addCorrect,
     addWrong,
+    healWrong,
     completeDe,
     completeSession,
     setFlashPerfect,

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { GameStats, getXPProgress } from "@/lib/useGameStats";
 import { ACHIEVEMENTS, TIER_COLORS } from "@/lib/achievements";
 import { Star, Flame, Target, Clock, Trophy, Award, Lock, Check, Circle, Calendar, TrendingUp, BarChart2 } from "lucide-react";
@@ -8,7 +9,8 @@ type Props = {
   stats: GameStats;
 };
 
-export default function StatsTab({ stats }: Props) {
+const StatsTab = memo(function 
+StatsTab({ stats }: Props) {
   const { current: xpCurrent, needed: xpNeeded, pct: levelPct } = getXPProgress(stats.totalXP);
   const accuracy =
     stats.totalCorrect + stats.totalWrong > 0
@@ -107,8 +109,8 @@ export default function StatsTab({ stats }: Props) {
           {/* Quick stats grid */}
           <div className="grid grid-cols-3 gap-5 flex-1">
             <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <Flame size={16} style={{ color: stats.currentStreak >= 7 ? 'var(--error)' : 'var(--accent)' }} />
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Flame size={20} style={{ color: stats.currentStreak >= 7 ? 'var(--error)' : 'var(--accent)' }} />
               </div>
               <div className="text-xl sm:text-2xl font-bold tabular-nums"
                 style={{ color: stats.currentStreak >= 7 ? 'var(--error)' : 'var(--accent)' }}>
@@ -117,8 +119,8 @@ export default function StatsTab({ stats }: Props) {
               <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>ngày streak</div>
             </div>
             <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <Target size={16} style={{ color: 'var(--success)' }} />
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Target size={20} style={{ color: 'var(--success)' }} />
               </div>
               <div className="text-xl sm:text-2xl font-bold tabular-nums"
                 style={{ color: 'var(--success)' }}>
@@ -127,8 +129,8 @@ export default function StatsTab({ stats }: Props) {
               <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>chính xác</div>
             </div>
             <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <Clock size={16} style={{ color: 'var(--indigo)' }} />
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Clock size={20} style={{ color: 'var(--indigo)' }} />
               </div>
               <div className="text-xl sm:text-2xl font-bold tabular-nums"
                 style={{ color: 'var(--indigo)' }}>
@@ -148,8 +150,8 @@ export default function StatsTab({ stats }: Props) {
 
           {/* Today Card */}
           <div className="glass-card rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <TrendingUp size={15} style={{ color: 'var(--accent)' }} />
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2.5" style={{ color: 'var(--text-primary)' }}>
+              <TrendingUp size={20} style={{ color: 'var(--accent)' }} />
               Hôm nay
             </h3>
             <div className="grid grid-cols-4 gap-3">
@@ -193,13 +195,13 @@ export default function StatsTab({ stats }: Props) {
 
           {/* Streak Calendar */}
           <div className="glass-card rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold mb-3 flex items-center justify-between"
+            <h3 className="text-base font-semibold mb-4 flex items-center justify-between"
               style={{ color: 'var(--text-primary)' }}>
-              <span className="flex items-center gap-2">
-                <Calendar size={15} style={{ color: 'var(--indigo)' }} />
+              <span className="flex items-center gap-2.5">
+                <Calendar size={20} style={{ color: 'var(--indigo)' }} />
                 Lịch luyện tập
               </span>
-              <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>
+              <span className="text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>
                 Kỷ lục: {stats.bestStreak} ngày
               </span>
             </h3>
@@ -215,7 +217,9 @@ export default function StatsTab({ stats }: Props) {
                   <div key={d.date}
                     className="aspect-square rounded-md flex items-center justify-center
                                text-[10px] sm:text-[11px] tabular-nums cursor-default
-                               transition-all duration-200 hover:scale-105"
+                               transition-all duration-200 hover:scale-105 hover:ring-1 focus:ring-1"
+                    tabIndex={0}
+                    aria-label={`${d.date}: ${d.xp} XP, ${d.correct} đúng, ${d.wrong} sai`}
                     style={{
                       background: d.xp > 0
                         ? `rgba(74, 222, 128, ${intensity})`
@@ -235,9 +239,9 @@ export default function StatsTab({ stats }: Props) {
 
           {/* Total Stats */}
           <div className="glass-card rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2.5"
               style={{ color: 'var(--text-primary)' }}>
-              <BarChart2 size={15} style={{ color: 'var(--accent)' }} />
+              <BarChart2 size={20} style={{ color: 'var(--accent)' }} />
               Tổng quan
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2.5 gap-x-4">
@@ -264,8 +268,9 @@ export default function StatsTab({ stats }: Props) {
 
           {/* Đệ Progress */}
           <div className="glass-card rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <Trophy size={15} style={{ color: 'var(--accent)' }} />
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2.5"
+              style={{ color: 'var(--text-primary)' }}>
+              <Trophy size={20} style={{ color: 'var(--accent)' }} />
               Tiến độ theo Đệ
             </h3>
             <div className="space-y-3">
@@ -311,10 +316,10 @@ export default function StatsTab({ stats }: Props) {
 
           {/* Achievements */}
           <div className="glass-card rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold mb-3 flex items-center justify-between"
+            <h3 className="text-base font-semibold mb-4 flex items-center justify-between"
               style={{ color: 'var(--text-primary)' }}>
-              <span className="flex items-center gap-2">
-                <Award size={15} style={{ color: 'var(--accent)' }} />
+              <span className="flex items-center gap-2.5">
+                <Award size={20} style={{ color: 'var(--accent)' }} />
                 Thành tựu
               </span>
               <span className="text-[10px] font-normal tabular-nums" style={{ color: 'var(--text-muted)' }}>
@@ -364,4 +369,6 @@ export default function StatsTab({ stats }: Props) {
       </div>
     </div>
   );
-}
+});
+
+export default StatsTab;

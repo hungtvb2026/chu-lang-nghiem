@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import { QuizVerse } from "@/lib/quiz";
 import { Lightbulb, HelpCircle } from "lucide-react";
 
@@ -13,7 +13,7 @@ type Props = {
 
 type BlankState = "idle" | "correct" | "wrong";
 
-export default function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
+const QuizLine = memo(function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
   const { verse, words, hiddenIndices } = qv;
 
   const [inputs, setInputs] = useState<Record<number, string>>({});
@@ -85,8 +85,8 @@ export default function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
       {words.map((word, idx) => {
         if (!hiddenIndices.has(idx)) {
           return (
-            <span key={idx} className="font-serif leading-relaxed"
-              style={{ color: 'var(--text-primary)', fontSize: '1.1rem' }}>
+            <span key={idx} className="font-serif text-2xl sm:text-3xl leading-relaxed"
+              style={{ color: 'var(--text-primary)' }}>
               {word}
             </span>
           );
@@ -95,15 +95,14 @@ export default function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
         const state = states[idx] ?? "idle";
         const hint = hints[idx];
         const bareWord = word.replace(/[;,.]$/g, "");
-        const inputWidth = `${Math.max(bareWord.length * 0.65 + 1.4, 3.5)}rem`;
+        const inputWidth = `${Math.max(bareWord.length * 0.9 + 2, 4.5)}rem`;
 
         if (state === "correct") {
           return (
             <span key={idx}
-              className="inline-block font-serif font-semibold leading-relaxed animate-correct-pop"
+              className="inline-block font-serif font-semibold leading-relaxed animate-correct-pop text-2xl sm:text-3xl"
               style={{
                 color: 'var(--success)',
-                fontSize: '1.1rem',
                 padding: '2px 10px',
                 borderRadius: '6px',
                 background: 'rgba(74, 222, 128, 0.06)',
@@ -131,23 +130,26 @@ export default function QuizLine({ qv, onCorrect, onReveal, onWrong }: Props) {
               autoCapitalize="off"
               spellCheck={false}
               enterKeyHint="done"
+              aria-label={`Từ còn thiếu vị trí ${idx + 1}`}
             />
             <button
               onClick={() => handleHint(idx)}
               title="Gợi ý chữ cái đầu"
-              className="flex items-center justify-center w-7 h-7 sm:w-6 sm:h-6 rounded-md
+              className="flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-[8px]
                          transition-all duration-200 active:scale-90"
               style={{
-                color: hint ? 'var(--accent)' : 'var(--text-muted)',
+                color: hint ? 'var(--accent)' : 'var(--text-hint)',
                 background: hint ? 'var(--accent-ghost)' : 'transparent',
               }}
               aria-label="Gợi ý"
             >
-              {hint ? <Lightbulb size={14} /> : <HelpCircle size={14} />}
+              {hint ? <Lightbulb size={18} /> : <HelpCircle size={18} />}
             </button>
           </span>
         );
       })}
     </div>
   );
-}
+});
+
+export default QuizLine;
